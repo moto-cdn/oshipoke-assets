@@ -1,4 +1,4 @@
-/* 推しポケソート */
+/* 推しポケランキング */
 (() => {
 'use strict';
 
@@ -1410,7 +1410,7 @@ async function makeImage(m) {
   const DISP = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", sans-serif';
   const BODY = '"Noto Sans JP", "Hiragino Sans", sans-serif';
   const list = topList(m);
-  const glyphs = '私の推しポケTOP0123456789ソート#' + list.map(i => ITEMS[i].n).join('');
+  const glyphs = '私の推しポケTOP0123456789ランキング#' + list.map(i => ITEMS[i].n).join('');
   const sub = condText(m.settings, m.total) + '選びました.※位以下は暫定' + list.map(formLabel).join('') + location.host;
   try { await Promise.all([document.fonts.load(`800 60px "M PLUS Rounded 1c"`, glyphs), document.fonts.load(`700 24px "Noto Sans JP"`, sub)]); } catch { /* フォントがなくても描画は続ける */ }
   const imgs = await Promise.all(list.map(i => loadImg(imgUrl(i))));
@@ -1444,7 +1444,7 @@ async function makeImage(m) {
   ctx.lineWidth = 3.5; ctx.strokeStyle = '#14172b'; ctx.beginPath(); ctx.arc(18, 18, 17, 0, Math.PI * 2); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(1, 18); ctx.lineTo(35, 18); ctx.stroke();
   ctx.beginPath(); ctx.arc(18, 18, 6, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#14172b'; ctx.font = `800 30px ${DISP}`; ctx.fillText('推しポケソート', 48, 30);
+  ctx.fillStyle = '#14172b'; ctx.font = `800 30px ${DISP}`; ctx.fillText('推しポケランキング', 48, 30);
   ctx.restore();
 
   const gx = 56, gy = 200, gap = 22, cw = (W - gx * 2 - gap * 2) / 3, ch = (H - gy - 70 - gap * 2) / 3;
