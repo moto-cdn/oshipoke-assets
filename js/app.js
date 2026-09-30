@@ -1073,6 +1073,18 @@ function buildSetup() {
   });
   heroArt();
   $('#heroArt').addEventListener('click', heroArt);
+  showPlayCount();
+}
+// プレイした人数（サーバーが記録から数えた count.json）。少ないうちは表示しない
+const PLAY_COUNT_MIN = 100;
+async function showPlayCount() {
+  try {
+    const r = await fetch('count.json');
+    const n = r.ok ? (await r.json()).n : 0;
+    if (!(n >= PLAY_COUNT_MIN)) return;
+    $('#playCount').innerHTML = `<b>${fmt(n)}人</b>がプレイしました！`;
+    $('#playCount').hidden = false;
+  } catch { /* 表示しないだけ */ }
 }
 function renderSetup() {
   store.set(PREF_KEY, settings);
