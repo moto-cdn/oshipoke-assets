@@ -69,9 +69,8 @@ kbd{font-family:var(--font-body);font-size:11px;border:1px solid var(--line-2);b
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 0}
 .logo{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:800;font-size:19px;color:var(--ink);text-decoration:none;letter-spacing:.02em;white-space:nowrap;min-width:0}
 @media (max-width:420px){.logo{font-size:16px;gap:8px;letter-spacing:0}.unofficial-pill{font-size:11px;padding:3px 9px}}
-.logo-ball{width:28px;height:28px;border-radius:50%;border:2.5px solid var(--ink);position:relative;flex:none;
-  background:linear-gradient(var(--brand) 0 44%,var(--ink) 44% 56%,#fff 56%)}
-.logo-ball::after{content:"";position:absolute;inset:50% auto auto 50%;width:9px;height:9px;border-radius:50%;background:#fff;border:2.5px solid var(--ink);transform:translate(-50%,-50%)}
+/* ロゴのボール（tools/make_icons.py の img/icon.svg と同じもの） */
+.logo-ball{width:30px;height:30px;flex:none;display:inline-block;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='4' x2='28' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23ff4d5e'/%3E%3Cstop offset='1' stop-color='%237b61ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg transform='rotate(-22 16 16)'%3E%3Ccircle cx='16' cy='16' r='14.72' fill='%2314172b'/%3E%3Ccircle cx='16' cy='16' r='12' fill='%23fff'/%3E%3Cpath d='M4 16a12 12 0 0 1 24 0z' fill='url(%23g)'/%3E%3Cpath d='M7.79 13.01A8.74 8.74 0 0 1 13.01 7.79' fill='none' stroke='%23fff' stroke-opacity='.67' stroke-width='2.45'/%3E%3Crect x='1.28' y='14.86' width='29.44' height='2.28' fill='%2314172b'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%2314172b'/%3E%3Ccircle cx='16' cy='16' r='3.83' fill='%23fff'/%3E%3Ccircle cx='16' cy='16' r='1.61' fill='%23ff4d5e'/%3E%3C/g%3E%3C/svg%3E") center/contain no-repeat}
 .logo:hover .logo-ball{animation:wobble .6s}
 @keyframes wobble{25%{transform:rotate(-14deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-5deg)}}
 

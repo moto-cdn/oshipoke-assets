@@ -44,6 +44,7 @@ const dexNo = n => 'No.' + String(n).padStart(4, '0');
 let uniformType = 0;
 const typeColor = i => TYPES[uniformType || ITEMS[i].t[0]][1];
 const fmt = n => n.toLocaleString('ja-JP');
+const genName = g => g === 1 ? '初代' : `第${g}世代`;
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 保存できない環境では何もしない */ } },
@@ -229,7 +230,7 @@ function tagPhrase(tag) {
   const [k, v] = tag.split(':');
   switch (k) {
     case 't': return [`<b>${TYPES[v][0]}</b>タイプのポケモン`, TYPES[v][1]];
-    case 'g': return [`<b>第${v}世代</b>（${REGIONS[v]}）のポケモン`];
+    case 'g': return [`<b>${genName(v)}</b>（${REGIONS[v]}）のポケモン`];
     case 'e': return [{ single: '<b>進化しない</b>ポケモン', pre: '<b>進化前</b>のポケモン', 1: '<b>1回進化した</b>ポケモン', 2: '<b>2回進化した</b>ポケモン' }[v]];
     case 'lm': return ['<b>伝説・幻</b>のポケモン', '#c98a00'];
     case 'ub': return ['<b>ウルトラビースト</b>'];
@@ -1019,7 +1020,7 @@ function loadPrefs() {
 function buildSetup() {
   const chips = $('#genChips');
   chips.innerHTML = `<button type="button" class="chip chip-all" data-gen="all"><small>第1〜9世代</small><b>全国</b></button>` +
-    REGIONS.slice(1).map((r, k) => `<button type="button" class="chip" data-gen="${k + 1}"><small>第${k + 1}世代</small><b>${r.replace('・', '・<wbr>')}</b></button>`).join('');
+    REGIONS.slice(1).map((r, k) => `<button type="button" class="chip" data-gen="${k + 1}"><small>${genName(k + 1)}</small><b>${r.replace('・', '・<wbr>')}</b></button>`).join('');
   chips.addEventListener('click', e => {
     const b = e.target.closest('.chip');
     if (!b) return;
@@ -1380,6 +1381,8 @@ const shareLink = m => `${pageBase()}?r=${encodeShare(m)}`;
 const shareURL = async m => shareLink(m);
 function canShareURL() { return location.protocol === 'http:' || location.protocol === 'https:'; }
 const HASHTAG = '私の推しポケTOP9';
+// ロゴのボール（img/icon.svg と同じもの。tools/make_icons.py で作る）
+const LOGO_BALL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="4" x2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff4d5e"/><stop offset="1" stop-color="#7b61ff"/></linearGradient></defs><g transform="rotate(-22 16 16)"><circle cx="16" cy="16" r="14.72" fill="#14172b"/><circle cx="16" cy="16" r="12" fill="#fff"/><path d="M4 16a12 12 0 0 1 24 0z" fill="url(#g)"/><path d="M7.79 13.01A8.74 8.74 0 0 1 13.01 7.79" fill="none" stroke="#fff" stroke-opacity=".67" stroke-width="2.45"/><rect x="1.28" y="14.86" width="29.44" height="2.28" fill="#14172b"/><circle cx="16" cy="16" r="6" fill="#14172b"/><circle cx="16" cy="16" r="3.83" fill="#fff"/><circle cx="16" cy="16" r="1.61" fill="#ff4d5e"/></g></svg>');
 function shareText(m) {
   return `私のNo.1推しポケは、${fullName(topList(m)[0])}でした！\nあなたも推しポケTOP9を決めてみる▼`;
 }
@@ -1436,16 +1439,12 @@ async function makeImage(m) {
   const note = m.ranked.length < list.length ? `　※${m.ranked.length + 1}位以下は暫定` : '';
   ctx.fillText(`${condText(m.settings, m.total)}選びました　${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}${note}`, 66, 164);
 
-  // ロゴ
-  const lx = W - 64 - 250, ly = 72;
-  ctx.save(); ctx.translate(lx, ly);
-  ctx.beginPath(); ctx.arc(18, 18, 17, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
-  ctx.beginPath(); ctx.arc(18, 18, 17, Math.PI, 0); ctx.fillStyle = '#ff4d5e'; ctx.fill();
-  ctx.lineWidth = 3.5; ctx.strokeStyle = '#14172b'; ctx.beginPath(); ctx.arc(18, 18, 17, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(1, 18); ctx.lineTo(35, 18); ctx.stroke();
-  ctx.beginPath(); ctx.arc(18, 18, 6, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#14172b'; ctx.font = `800 30px ${DISP}`; ctx.fillText('推しポケランキング', 48, 30);
-  ctx.restore();
+  // ロゴ（右寄せ）
+  ctx.font = `800 30px ${DISP}`;
+  const lw = ctx.measureText('推しポケランキング').width, lx = W - 64 - lw - 50, ly = 72;
+  const ball = await loadImg(LOGO_BALL);
+  if (ball) ctx.drawImage(ball, lx - 2, ly - 2, 40, 40);
+  ctx.fillStyle = '#14172b'; ctx.fillText('推しポケランキング', lx + 48, ly + 30);
 
   const gx = 56, gy = 200, gap = 22, cw = (W - gx * 2 - gap * 2) / 3, ch = (H - gy - 70 - gap * 2) / 3;
   const medal = ['#f2b705', '#a7b0c2', '#d08a4e'];
