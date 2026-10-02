@@ -240,6 +240,7 @@ function tagPhrase(tag) {
     case 'fo': return ['<b>化石</b>から復元されたポケモン'];
     case 'bb': return ['<b>ベイビィ</b>ポケモン'];
     case 'a': return [`特性<b>「${esc(D.abilities[v])}」</b>をもつポケモン`];
+    case 'A': return [`特性<b>「${esc(v)}」</b>をもつポケモン`];   // 共有されたもの（特性は番号でなく名前で保存）
     case 'h': return [v === 's' ? '平均より<b>小さめ</b>のポケモン' : '平均より<b>大きめ</b>のポケモン'];
     case 'w': return [v === 'l' ? '平均より<b>軽め</b>のポケモン' : '<b>ずっしり重い</b>ポケモン'];
     case 'c': return [`<b>${COLOR_ADJ[v]}</b>ポケモン`];
@@ -1237,6 +1238,14 @@ async function collectResult(m) {
     if (navigator.sendBeacon('collect.php', body)) { s.sentK = m.ranked.length; save(); } else sendingK = 0;
   } catch { sendingK = 0; }
 }
+// 好みの傾向（サクッと: TOP9の共通点から / ガチ: これまでの選択の積み重ねから）。共有されたものは保存した内容を使う
+function insightsOf(m) {
+  if (m.insights !== undefined) return m.insights;
+  if (isShared || !state) return null;
+  const byTop = state.mode === 'saku', top = topList(m);
+  const list = (byTop ? top9Tags(state.ids, top) : rankedTags(2, 1.3, true)).slice(0, 6);
+  return { byTop, n: top.length, list: list.map(({ t, a, lift }) => ({ t, a, lift })) };
+}
 function renderResult(m) {
   uniformType = m.settings.type || 0;
   labelPeers = labelContext([...m.ranked, ...m.ref.map(r => r.i), ...m.rest]);
@@ -1282,14 +1291,12 @@ function renderResult(m) {
   }
 
   // 好みの傾向（断定せず「〜かも？」で伝える）
-  const sec = $('#insightSection'), rt = $('#resultThought');
-  if (isShared || !state) { sec.hidden = true; rt.hidden = true; }
+  const sec = $('#insightSection'), rt = $('#resultThought'), ins = insightsOf(m);
+  if (!ins) { sec.hidden = true; rt.hidden = true; }
   else {
     sec.hidden = false;
-    // サクッと: TOP9の共通点から / ガチ: これまでの選択の積み重ねから
-    const byTop = state.mode === 'saku';
-    const top = topList(m);
-    const list = (byTop ? top9Tags(state.ids, top) : rankedTags(2, 1.3, true)).slice(0, 6);
+    $('#insightTitle').textContent = isShared ? '好みの傾向' : 'あなたの好みの傾向';
+    const { byTop, list } = ins, top = { length: ins.n };
     const [phrase, topColor] = list.length ? tagPhrase(list[0].t) : ['<b>いろんな</b>ポケモン'];
     $('#resultThoughtText').innerHTML = `${phrase}が好きなのかも？`;
     rt.style.setProperty('--hl', topColor || 'var(--brand)');
@@ -1382,12 +1389,16 @@ const shareLink = m => `${pageBase()}?r=${encodeShare(m)}`;
 const SHARE_REF_MAX = 30;
 const BY_ID = new Map(ITEMS.map((it, i) => [it.id, i]));
 function sharePayload(m) {
-  const st = m.settings, id = i => ITEMS[i].id;
+  const st = m.settings, id = i => ITEMS[i].id, ins = insightsOf(m);
   return {
     v: D.version, m: m.mode, g: st.gens.reduce((a, g) => a | (1 << (g - 1)), 0), sb: settingsByte(st), t: st.type || 0,
     n: m.total, c: m.choices, r: m.ranked.map(id), f: m.ref.slice(0, SHARE_REF_MAX).map(r => [id(r.i), r.w]),
+    // 好みの傾向（特性は番号が変わることがあるので名前で保存）
+    i: ins && { b: ins.byTop ? 1 : 0, n: ins.n, l: ins.list.map(x => [x.t.startsWith('a:') ? `A:${D.abilities[x.t.slice(2)]}` : x.t, x.a, Math.round(x.lift * 10) / 10]) },
   };
 }
+// 共有されたデータの特徴が、このサイトで表示できるものか
+const knownTag = t => { try { const [p] = tagPhrase(String(t)); return typeof p === 'string' && p !== t && !p.includes('undefined'); } catch { return false; } };
 function modelFromShare(d, sid) {
   const idx = id => BY_ID.get(id);
   const ranked = (d.r || []).map(idx).filter(i => i != null);
@@ -1395,6 +1406,7 @@ function modelFromShare(d, sid) {
   return {
     stale: ranked.length < (d.r || []).length, settings: byteSettings(d.g, d.sb, d.t <= 18 ? d.t : 0), mode: MODE_KEYS.includes(d.m) ? d.m : 'saku',
     total: d.n || 0, choices: d.c || 0, ranked, ref, rest: [], detail: true, sid,
+    insights: d.i && Array.isArray(d.i.l) ? { byTop: !!d.i.b, n: +d.i.n || 0, list: d.i.l.filter(([t]) => knownTag(t)).map(([t, a, lift]) => ({ t, a: +a || 0, lift: +lift || 0 })) } : null,
   };
 }
 // 同じ結果は1回だけ保存する（順位が増えたら保存し直す）。保存した番号は途中経過と一緒に覚えておく
