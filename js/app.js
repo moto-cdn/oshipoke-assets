@@ -1244,7 +1244,7 @@ function renderResult(m) {
   $('#resultTitle').innerHTML = isShared ? '推しポケ<em>TOP9</em>はこれ！' : '私の推しポケ<em>TOP9</em>';
   // 共有ページは TOP9 と「決めてみる！」ボタンだけ
   $('#shareActions').hidden = isShared;
-  $('#rankingSection').hidden = isShared;
+  $('#rankingSection').hidden = isShared && !m.detail;
   const top = $('#top9');
   const cells = [];
   const list = topList(m);
@@ -1334,7 +1334,8 @@ function renderResult(m) {
 }
 
 /* ---- 共有用URL ----
- * サーバーには何も保存せず、TOP9と選んだ条件だけをURL（?r=…）にビット単位で詰めて入れる（24文字ほど）。
+ * 共有するときに、決まった順位・暫定順位（上位30匹）・選んだ条件をサーバー（share.php）に保存し、短いURL（?s=10文字）にする。
+ * 保存できなかったときは、TOP9と選んだ条件だけをURL（?r=…）にビット単位で詰めて入れる（24文字ほど。以前の共有URLもこの形）。
  * 形式7（ビット数）: [形式7:4][データ版の日付:8][地方:9][進化:2][すがた違い:6][タイプ:5][モード:1][件数:4] + 件数×[ポケモン番号:11]
  */
 const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -1378,7 +1379,48 @@ function decodeShare(code) {
 }
 const pageBase = () => `${location.origin}${location.pathname}`;
 const shareLink = m => `${pageBase()}?r=${encodeShare(m)}`;
-const shareURL = async m => shareLink(m);
+const SHARE_REF_MAX = 30;
+const BY_ID = new Map(ITEMS.map((it, i) => [it.id, i]));
+function sharePayload(m) {
+  const st = m.settings, id = i => ITEMS[i].id;
+  return {
+    v: D.version, m: m.mode, g: st.gens.reduce((a, g) => a | (1 << (g - 1)), 0), sb: settingsByte(st), t: st.type || 0,
+    n: m.total, c: m.choices, r: m.ranked.map(id), f: m.ref.slice(0, SHARE_REF_MAX).map(r => [id(r.i), r.w]),
+  };
+}
+function modelFromShare(d, sid) {
+  const idx = id => BY_ID.get(id);
+  const ranked = (d.r || []).map(idx).filter(i => i != null);
+  const ref = (d.f || []).map(([id, w]) => ({ i: idx(id), w })).filter(r => r.i != null);
+  return {
+    stale: ranked.length < (d.r || []).length, settings: byteSettings(d.g, d.sb, d.t <= 18 ? d.t : 0), mode: MODE_KEYS.includes(d.m) ? d.m : 'saku',
+    total: d.n || 0, choices: d.c || 0, ranked, ref, rest: [], detail: true, sid,
+  };
+}
+// 同じ結果は1回だけ保存する（順位が増えたら保存し直す）。保存した番号は途中経過と一緒に覚えておく
+const shareCache = new Map();
+function shareURL(m) {
+  if (m.sid) return Promise.resolve(`${pageBase()}?s=${m.sid}`);
+  if (isShared) return Promise.resolve(shareLink(m));
+  const key = `${state?.created}|${m.ranked.length}|${m.ref.length}|${m.choices}`;
+  const saved = state?.shares?.[key];
+  if (saved) return Promise.resolve(`${pageBase()}?s=${saved}`);
+  if (shareCache.has(key)) return shareCache.get(key);
+  const p = (async () => {
+    try {
+      const r = await fetch('share.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sharePayload(m)) });
+      const j = r.ok ? await r.json() : null;
+      if (j && /^[a-z0-9]{10}$/.test(j.id)) {
+        if (state) { state.shares = { [key]: j.id }; save(); }
+        return `${pageBase()}?s=${j.id}`;
+      }
+    } catch { /* 保存できなければ短い形式で */ }
+    shareCache.delete(key);
+    return shareLink(m);
+  })();
+  shareCache.set(key, p);
+  return p;
+}
 function canShareURL() { return location.protocol === 'http:' || location.protocol === 'https:'; }
 const HASHTAG = '私の推しポケTOP9';
 // ロゴのボール（img/icon.svg と同じもの。tools/make_icons.py で作る）
@@ -1502,24 +1544,26 @@ async function withBusy(btn, fn) {
   try { await fn(); } catch (e) { console.error(e); toast('作成できませんでした'); } finally { btn.disabled = false; btn.innerHTML = t; }
 }
 // X のポスト画面のURL（本文・共有URL・ハッシュタグ）
-function intentURL(m) {
+function intentURL(m, url) {
   const q = new URLSearchParams({ text: shareText(m), hashtags: HASHTAG });
-  if (canShareURL()) q.set('url', shareLink(m));
+  if (url) q.set('url', url);
   return `https://x.com/intent/post?${q}`;
 }
 async function post() {
   const m = currentModel;
   track('share', { method: 'post' });
+  // 共有URLの保存は、画像づくりと同時に始める
+  const urlP = canShareURL() ? shareURL(m) : Promise.resolve('');
   // スマホ: 共有メニューから画像ごとポスト
   if (matchMedia('(hover: none)').matches && navigator.canShare) {
-    const blob = await makeImage(m);
+    const [blob, url] = await Promise.all([makeImage(m), urlP]);
     const file = new File([blob], 'oshipoke_top9.png', { type: 'image/png' });
     if (navigator.canShare({ files: [file] })) {
-      const text = [shareText(m), canShareURL() ? shareLink(m) : '', `#${HASHTAG}`].filter(Boolean).join('\n');
+      const text = [shareText(m), url, `#${HASHTAG}`].filter(Boolean).join('\n');
       try { await navigator.share({ files: [file], text }); return; } catch (e) { if (e.name === 'AbortError') return; }
     }
     downloadBlob(blob, 'oshipoke_top9.png');
-    openPostDialog(m, false);
+    openPostDialog(m, false, url);
     return;
   }
   // パソコン: 画像をクリップボードにコピーしてから、ポスト画面で貼り付けてもらう
@@ -1532,13 +1576,13 @@ async function post() {
     }
   }
   if (!copied) downloadBlob(await blobP, 'oshipoke_top9.png');
-  openPostDialog(m, copied);
+  openPostDialog(m, copied, await urlP);
 }
-function openPostDialog(m, copied) {
+function openPostDialog(m, copied, url) {
   const paste = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl+V';
   $('#postTitle').textContent = copied ? '画像をコピーしました' : '画像を保存しました';
   $('#postText').textContent = copied ? `ポスト画面で ${paste} を押すと、画像を貼り付けられます` : 'ポスト画面で、保存した画像を添付してください';
-  $('#postOpen').href = intentURL(m);
+  $('#postOpen').href = intentURL(m, url);
   $('#postDialog').hidden = false;
 }
 const closePostDialog = () => { $('#postDialog').hidden = true; };
@@ -1637,12 +1681,16 @@ function bindGlobal() {
 async function boot() {
   buildSetup();
   bindGlobal();
-  // 共有URL: ?r=…
-  const code = new URLSearchParams(location.search).get('r');
-  if (code && /^[A-Za-z0-9_-]+$/.test(code)) {
+  // 共有URL: ?s=…（サーバーに保存したランキング）/ ?r=…（TOP9だけをURLに入れた形）
+  const q = new URLSearchParams(location.search), sid = q.get('s'), code = q.get('r');
+  if ((sid && /^[a-z0-9]{10}$/.test(sid)) || (code && /^[A-Za-z0-9_-]+$/.test(code))) {
     try {
       isShared = true;
-      currentModel = decodeShare(code);
+      if (sid) {
+        const r = await fetch(`share.php?id=${sid}`);
+        if (!r.ok) throw new Error(r.status);
+        currentModel = modelFromShare(await r.json(), sid);
+      } else currentModel = decodeShare(code);
       show('result');
       renderResult(currentModel);
       if (currentModel.stale) toast('データ更新のため一部の表示が異なる場合があります', 4000);
