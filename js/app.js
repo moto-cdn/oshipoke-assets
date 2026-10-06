@@ -1318,7 +1318,7 @@ function renderResult(m) {
   const row = (i, n, sure, sub) => {
     const fl = formLabel(i);
     return `<li class="rank-row${sure ? ' sure' : ''}" style="--tc:${typeColor(i)}"><span class="n">${n}${sub ? `<small>${sub}</small>` : ''}</span>
-      <img src="${imgUrl(i)}" alt="" loading="lazy"><span><span class="nm">${esc(ITEMS[i].n)}</span>${fl ? `<span class="fm">${esc(fl)}</span>` : ''}</span>
+      <img src="${imgUrl(i)}" alt="" loading="lazy"><span><span class="nm">${esc(ITEMS[i].n).replace(/・/g, "・<wbr>")}</span>${fl ? `<span class="fm">${esc(fl)}</span>` : ''}</span>
       <span class="tp">${ITEMS[i].t.map(t => `<span class="type" style="--c:${TYPES[t][1]}">${TYPES[t][0]}</span>`).join('')}</span></li>`;
   };
   const rows = m.ranked.map((i, k) => row(i, k + 1, true));
