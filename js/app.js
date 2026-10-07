@@ -1341,7 +1341,8 @@ function renderResult(m) {
 }
 
 /* ---- 共有用URL ----
- * 共有するときに、決まった順位・暫定順位（上位30匹）・選んだ条件をサーバー（share.php）に保存し、短いURL（?s=10文字）にする。
+ * 共有するときに、決まった順位・暫定順位（上位30匹）・選んだ条件・好みの傾向と、サムネイル画像（TOP9）をサーバー（share.php）に保存し、
+ * 短いURL（s/10文字）にする。このページにはその結果の画像が設定されるので、Xなどに貼るとTOP9がプレビューに出る。
  * 保存できなかったときは、TOP9と選んだ条件だけをURL（?r=…）にビット単位で詰めて入れる（24文字ほど。以前の共有URLもこの形）。
  * 形式7（ビット数）: [形式7:4][データ版の日付:8][地方:9][進化:2][すがた違い:6][タイプ:5][モード:1][件数:4] + 件数×[ポケモン番号:11]
  */
@@ -1384,7 +1385,9 @@ function decodeShare(code) {
   if (by[0] >> 4 !== 7) throw new Error('format');
   return decodeShareV7(by);
 }
-const pageBase = () => `${location.origin}${location.pathname}`;
+const pageBase = () => `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+// 共有ページのURL。サムネイルつきは s/〇〇（その結果の画像がプレビューに出る）、それ以外は ?s=〇〇
+const shareIdURL = id => id.startsWith('?') ? `${pageBase()}?s=${id.slice(1)}` : `${pageBase()}s/${id}`;
 const shareLink = m => `${pageBase()}?r=${encodeShare(m)}`;
 const SHARE_REF_MAX = 30;
 const BY_ID = new Map(ITEMS.map((it, i) => [it.id, i]));
@@ -1393,6 +1396,7 @@ function sharePayload(m) {
   return {
     v: D.version, m: m.mode, g: st.gens.reduce((a, g) => a | (1 << (g - 1)), 0), sb: settingsByte(st), t: st.type || 0,
     n: m.total, c: m.choices, r: m.ranked.map(id), f: m.ref.slice(0, SHARE_REF_MAX).map(r => [id(r.i), r.w]),
+    n1: m.ranked.length ? fullName(m.ranked[0]) : '',   // 共有ページの説明文（No.1の名前）
     // 好みの傾向（特性は番号が変わることがあるので名前で保存）
     i: ins && { b: ins.byTop ? 1 : 0, n: ins.n, l: ins.list.map(x => [x.t.startsWith('a:') ? `A:${D.abilities[x.t.slice(2)]}` : x.t, x.a, Math.round(x.lift * 10) / 10]) },
   };
@@ -1412,19 +1416,24 @@ function modelFromShare(d, sid) {
 // 同じ結果は1回だけ保存する（順位が増えたら保存し直す）。保存した番号は途中経過と一緒に覚えておく
 const shareCache = new Map();
 function shareURL(m) {
-  if (m.sid) return Promise.resolve(`${pageBase()}?s=${m.sid}`);
+  if (m.sid) return Promise.resolve(`${pageBase()}?s=${m.sid}`);   // 共有ページで「URLをコピー」したとき
   if (isShared) return Promise.resolve(shareLink(m));
   const key = `${state?.created}|${m.ranked.length}|${m.ref.length}|${m.choices}`;
   const saved = state?.shares?.[key];
-  if (saved) return Promise.resolve(`${pageBase()}?s=${saved}`);
+  if (saved) return Promise.resolve(shareIdURL(saved));
   if (shareCache.has(key)) return shareCache.get(key);
   const p = (async () => {
     try {
-      const r = await fetch('share.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sharePayload(m)) });
+      // 共有リンクのサムネイル（TOP9の画像）も一緒に送る。作れなかったときは画像なしで保存する
+      const fd = new FormData();
+      fd.append('data', JSON.stringify(sharePayload(m)));
+      try { const img = await makeOgpImage(m); if (img) fd.append('img', img, 'og.jpg'); } catch { /* 画像なし */ }
+      const r = await fetch('share.php', { method: 'POST', body: fd });
       const j = r.ok ? await r.json() : null;
       if (j && /^[a-z0-9]{10}$/.test(j.id)) {
-        if (state) { state.shares = { [key]: j.id }; save(); }
-        return `${pageBase()}?s=${j.id}`;
+        const id = j.og ? `${j.id}` : `?${j.id}`;   // 画像つき: s/〇〇 のページ / 画像なし: ?s=〇〇
+        if (state) { state.shares = { [key]: id }; save(); }
+        return shareIdURL(id);
       }
     } catch { /* 保存できなければ短い形式で */ }
     shareCache.delete(key);
@@ -1461,83 +1470,108 @@ function fitFont(ctx, text, maxW, size, weight, family) {
   do { ctx.font = `${weight} ${s}px ${family}`; if (ctx.measureText(text).width <= maxW) break; s -= 1; } while (s > 12);
   return s;
 }
-async function makeImage(m) {
-  const cv = $('#shareCanvas'), ctx = cv.getContext('2d');
-  const W = 1200, H = 1200;
-  const DISP = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", sans-serif';
-  const BODY = '"Noto Sans JP", "Hiragino Sans", sans-serif';
+/* ---- 画像（共有画像 1200x1200 / 共有リンクのサムネイル 1200x630）---- */
+const DISP = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", sans-serif';
+const BODY = '"Noto Sans JP", "Hiragino Sans", sans-serif';
+// フォントとポケモン画像を読み込んでおく
+async function imageAssets(m) {
   const list = topList(m);
   const glyphs = '私の推しポケTOP0123456789ランキング#' + list.map(i => ITEMS[i].n).join('');
   const sub = condText(m.settings, m.total) + '選びました.※位以下は暫定' + list.map(formLabel).join('') + location.host;
   try { await Promise.all([document.fonts.load(`800 60px "M PLUS Rounded 1c"`, glyphs), document.fonts.load(`700 24px "Noto Sans JP"`, sub)]); } catch { /* フォントがなくても描画は続ける */ }
-  const imgs = await Promise.all(list.map(i => loadImg(imgUrl(i))));
-
+  const [imgs, ball] = await Promise.all([Promise.all(list.map(i => loadImg(imgUrl(i)))), loadImg(LOGO_BALL)]);
+  return { list, imgs, ball };
+}
+// 背景（グラデーション＋ドット）
+function drawBackdrop(ctx, W, H) {
   const bg = ctx.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, '#fff4f5'); bg.addColorStop(1, '#f0edff');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(20,23,43,.06)';
   for (let y = 12; y < H; y += 26) for (let x = 12; x < W; x += 26) { ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill(); }
-
+}
+// 見出し「私の推しポケTOP9」（左）とロゴ（右）
+function drawHeading(ctx, W, x, y, size, ball, logoY, logoSize) {
   ctx.fillStyle = '#14172b';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `800 66px ${DISP}`;
-  ctx.fillText('私の推しポケ', 64, 118);
+  ctx.font = `800 ${size}px ${DISP}`;
+  ctx.fillText('私の推しポケ', x, y);
   const tw = ctx.measureText('私の推しポケ').width;
-  const g = ctx.createLinearGradient(64 + tw, 0, 64 + tw + 220, 0);
+  const g = ctx.createLinearGradient(x + tw, 0, x + tw + size * 3.3, 0);
   g.addColorStop(0, '#ff4d5e'); g.addColorStop(1, '#7b61ff');
   ctx.fillStyle = g;
-  ctx.fillText('TOP9', 64 + tw + 14, 118);
+  ctx.fillText('TOP9', x + tw + size * .2, y);
+  ctx.font = `800 ${logoSize}px ${DISP}`;
+  const b = logoSize * 1.33, lw = ctx.measureText('推しポケランキング').width, lx = W - x - lw - b - 10;
+  if (ball) ctx.drawImage(ball, lx, logoY - logoSize * .95, b, b);
+  ctx.fillStyle = '#14172b'; ctx.fillText('推しポケランキング', lx + b + 10, logoY);
+}
+// ポケモン1匹のカード。u は大きさの倍率（共有画像=1）
+function drawCard(ctx, x, y, cw, ch, k, i, im, m, u) {
+  const medal = ['#f2b705', '#a7b0c2', '#d08a4e'], r = 28 * u;
+  ctx.save();
+  ctx.shadowColor = 'rgba(20,23,43,.12)'; ctx.shadowBlur = 24 * u; ctx.shadowOffsetY = 8 * u;
+  roundRect(ctx, x, y, cw, ch, r); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.restore();
+  if (i == null) return;
+  ctx.save();
+  roundRect(ctx, x, y, cw, ch, r); ctx.clip();
+  const tc = typeColor(i);
+  const rg = ctx.createRadialGradient(x + cw / 2, y + ch * .38, 10 * u, x + cw / 2, y + ch * .38, cw * .62);
+  rg.addColorStop(0, tc + '44'); rg.addColorStop(1, tc + '00');
+  ctx.fillStyle = rg; ctx.fillRect(x, y, cw, ch);
+  ctx.restore();
+  if (k === 0) { ctx.lineWidth = 5 * u; ctx.strokeStyle = '#f2b705'; roundRect(ctx, x + 2.5 * u, y + 2.5 * u, cw - 5 * u, ch - 5 * u, r - 2 * u); ctx.stroke(); }
+  const fl = formLabel(i);
+  const isz = Math.min(cw - 24 * u, ch - (fl ? 96 : 76) * u);
+  if (im) ctx.drawImage(im, x + (cw - isz) / 2, y + 12 * u, isz, isz);
+  ctx.fillStyle = '#14172b';
+  ctx.textAlign = 'center';
+  fitFont(ctx, ITEMS[i].n, cw - 32 * u, 32 * u, 800, DISP);
+  ctx.fillText(ITEMS[i].n, x + cw / 2, y + ch - (fl ? 46 : 22) * u);
+  if (fl) { ctx.fillStyle = '#6b7190'; fitFont(ctx, fl, cw - 28 * u, 19 * u, 700, BODY); ctx.fillText(fl, x + cw / 2, y + ch - 18 * u); }
+  ctx.beginPath(); ctx.arc(x + 34 * u, y + 34 * u, 22 * u, 0, Math.PI * 2);
+  ctx.fillStyle = k >= m.ranked.length ? '#9aa0b8' : medal[k] || '#14172b'; ctx.fill();
+  ctx.fillStyle = k < 3 ? (k === 0 ? '#3b2a00' : k === 1 ? '#1d2330' : '#fff') : '#fff';
+  ctx.font = `800 ${24 * u}px ${DISP}`;
+  ctx.fillText(String(k + 1), x + 34 * u, y + 43 * u);
+  ctx.textAlign = 'left';
+}
+async function makeImage(m) {
+  const cv = $('#shareCanvas'), ctx = cv.getContext('2d');
+  const W = 1200, H = 1200;
+  const { list, imgs, ball } = await imageAssets(m);
+  drawBackdrop(ctx, W, H);
+  drawHeading(ctx, W, 64, 118, 66, ball, 102, 30);
   ctx.fillStyle = '#6b7190';
   ctx.font = `700 24px ${BODY}`;
   const d = new Date();
   const note = m.ranked.length < list.length ? `　※${m.ranked.length + 1}位以下は暫定` : '';
   ctx.fillText(`${condText(m.settings, m.total)}選びました　${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}${note}`, 66, 164);
 
-  // ロゴ（右寄せ）
-  ctx.font = `800 30px ${DISP}`;
-  const lw = ctx.measureText('推しポケランキング').width, lx = W - 64 - lw - 50, ly = 72;
-  const ball = await loadImg(LOGO_BALL);
-  if (ball) ctx.drawImage(ball, lx - 2, ly - 2, 40, 40);
-  ctx.fillStyle = '#14172b'; ctx.fillText('推しポケランキング', lx + 48, ly + 30);
 
   const gx = 56, gy = 200, gap = 22, cw = (W - gx * 2 - gap * 2) / 3, ch = (H - gy - 70 - gap * 2) / 3;
-  const medal = ['#f2b705', '#a7b0c2', '#d08a4e'];
-  for (let k = 0; k < TOP_N; k++) {
-    const x = gx + (k % 3) * (cw + gap), y = gy + Math.floor(k / 3) * (ch + gap);
-    const i = list[k];
-    ctx.save();
-    ctx.shadowColor = 'rgba(20,23,43,.12)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
-    roundRect(ctx, x, y, cw, ch, 28); ctx.fillStyle = '#fff'; ctx.fill();
-    ctx.restore();
-    if (i == null) continue;
-    ctx.save();
-    roundRect(ctx, x, y, cw, ch, 28); ctx.clip();
-    const tc = typeColor(i);
-    const rg = ctx.createRadialGradient(x + cw / 2, y + ch * .38, 10, x + cw / 2, y + ch * .38, cw * .62);
-    rg.addColorStop(0, tc + '44'); rg.addColorStop(1, tc + '00');
-    ctx.fillStyle = rg; ctx.fillRect(x, y, cw, ch);
-    ctx.restore();
-    if (k === 0) { ctx.lineWidth = 5; ctx.strokeStyle = '#f2b705'; roundRect(ctx, x + 2.5, y + 2.5, cw - 5, ch - 5, 26); ctx.stroke(); }
-    const im = imgs[k], fl = formLabel(i);
-    const isz = ch - (fl ? 96 : 76);
-    if (im) ctx.drawImage(im, x + (cw - isz) / 2, y + 12, isz, isz);
-    ctx.fillStyle = '#14172b';
-    ctx.textAlign = 'center';
-    fitFont(ctx, ITEMS[i].n, cw - 32, 32, 800, DISP);
-    ctx.fillText(ITEMS[i].n, x + cw / 2, y + ch - (fl ? 46 : 22));
-    if (fl) { ctx.fillStyle = '#6b7190'; fitFont(ctx, fl, cw - 28, 19, 700, BODY); ctx.fillText(fl, x + cw / 2, y + ch - 18); }
-    ctx.textAlign = 'left';
-    ctx.beginPath(); ctx.arc(x + 34, y + 34, 22, 0, Math.PI * 2);
-    ctx.fillStyle = k >= m.ranked.length ? '#9aa0b8' : medal[k] || '#14172b'; ctx.fill();
-    ctx.fillStyle = k < 3 ? (k === 0 ? '#3b2a00' : k === 1 ? '#1d2330' : '#fff') : '#fff';
-    ctx.font = `800 24px ${DISP}`; ctx.textAlign = 'center';
-    ctx.fillText(String(k + 1), x + 34, y + 43);
-    ctx.textAlign = 'left';
-  }
+  for (let k = 0; k < TOP_N; k++) drawCard(ctx, gx + (k % 3) * (cw + gap), gy + Math.floor(k / 3) * (ch + gap), cw, ch, k, list[k], imgs[k], m, 1);
   ctx.fillStyle = '#6b7190'; ctx.font = `700 22px ${BODY}`; ctx.textAlign = 'center';
   ctx.fillText(`#${HASHTAG}`, W / 2, H - 28);
   ctx.textAlign = 'left';
   return new Promise(res => cv.toBlob(res, 'image/png'));
+}
+// 共有リンクのサムネイル（OGP画像）: 見出しと TOP9 だけ。上段に1〜5位、下段に6〜9位
+async function makeOgpImage(m) {
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+  const W = 1200, H = 630;
+  cv.width = W; cv.height = H;
+  const { list, imgs, ball } = await imageAssets(m);
+  drawBackdrop(ctx, W, H);
+  drawHeading(ctx, W, 44, 84, 56, ball, 76, 26);
+  const gx = 36, gy = 116, gap = 16, cw = (W - gx * 2 - gap * 4) / 5, ch = (H - gy - 26 - gap) / 2;
+  for (let k = 0; k < TOP_N; k++) {
+    const row = k < 5 ? 0 : 1, col = row ? k - 5 : k;
+    const x = gx + (row ? (cw + gap) / 2 : 0) + col * (cw + gap), y = gy + row * (ch + gap);
+    drawCard(ctx, x, y, cw, ch, k, list[k], imgs[k], m, .7);
+  }
+  return new Promise(res => cv.toBlob(res, 'image/jpeg', .86));
 }
 function downloadBlob(blob, name) {
   const a = document.createElement('a');
