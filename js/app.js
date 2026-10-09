@@ -1569,21 +1569,109 @@ async function makeImage(m) {
   ctx.textAlign = 'left';
   return new Promise(res => cv.toBlob(res, 'image/png'));
 }
-// 共有リンクのサムネイル（OGP画像）: 見出しと TOP9 だけ。上段に1〜5位、下段に6〜9位
+// 共有リンクのサムネイル（OGP画像）: ブランド色のグラデーションの上に、左に大きく1位、右に2〜9位
+function sparkle(ctx, x, y, r, color) {
+  ctx.beginPath();
+  for (let k = 0; k < 8; k++) {
+    const a = k * Math.PI / 4 - Math.PI / 2, rr = k % 2 ? r * .28 : r;
+    ctx.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a));
+  }
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
+function crown(ctx, cx, cy, w) {
+  const h = w * .62;
+  ctx.beginPath();
+  ctx.moveTo(cx - w / 2, cy + h / 2);
+  ctx.lineTo(cx - w / 2, cy - h * .2); ctx.lineTo(cx - w / 4, cy + h * .08);
+  ctx.lineTo(cx, cy - h / 2); ctx.lineTo(cx + w / 4, cy + h * .08);
+  ctx.lineTo(cx + w / 2, cy - h * .2); ctx.lineTo(cx + w / 2, cy + h / 2);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(0, cy - h / 2, 0, cy + h / 2);
+  g.addColorStop(0, '#ffe27a'); g.addColorStop(1, '#f2a705');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#3b2a00'; ctx.lineJoin = 'round'; ctx.stroke();
+}
 async function makeOgpImage(m) {
   const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
   const W = 1200, H = 630;
   cv.width = W; cv.height = H;
   const { list, imgs, ball } = await imageAssets(m);
-  drawBackdrop(ctx, W, H);
-  drawHeading(ctx, W, 44, 84, 56, ball, 76, 26);
-  const gx = 36, gy = 116, gap = 16, cw = (W - gx * 2 - gap * 4) / 5, ch = (H - gy - 26 - gap) / 2;
-  for (let k = 0; k < TOP_N; k++) {
-    const row = k < 5 ? 0 : 1, col = row ? k - 5 : k;
-    const x = gx + (row ? (cw + gap) / 2 : 0) + col * (cw + gap), y = gy + row * (ch + gap);
-    drawCard(ctx, x, y, cw, ch, k, list[k], imgs[k], m, .7);
+
+  // 背景: 赤→紫のグラデーション＋光のにじみ＋ドット
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#ff5a6e'); bg.addColorStop(.55, '#b45cf0'); bg.addColorStop(1, '#6b52ff');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  for (const [x, y, r, a] of [[250, 300, 360, .35], [980, 80, 300, .22], [1100, 620, 260, .18]]) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
-  return new Promise(res => cv.toBlob(res, 'image/jpeg', .86));
+  ctx.fillStyle = 'rgba(255,255,255,.12)';
+  for (let y = 14; y < H; y += 28) for (let x = 14; x < W; x += 28) { ctx.beginPath(); ctx.arc(x, y, 1.7, 0, Math.PI * 2); ctx.fill(); }
+
+  // 1位: 左の大きなカード
+  const hx = 40, hy = 40, hw = 404, hh = H - 80, i0 = list[0];
+  ctx.save();
+  ctx.shadowColor = 'rgba(40,10,80,.35)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14;
+  roundRect(ctx, hx, hy, hw, hh, 36); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.restore();
+  if (i0 != null) {
+    ctx.save();
+    roundRect(ctx, hx, hy, hw, hh, 36); ctx.clip();
+    const tc = typeColor(i0);
+    const rg = ctx.createRadialGradient(hx + hw / 2, hy + 230, 20, hx + hw / 2, hy + 230, 260);
+    rg.addColorStop(0, tc + '66'); rg.addColorStop(1, tc + '00');
+    ctx.fillStyle = rg; ctx.fillRect(hx, hy, hw, hh);
+    // 後光
+    ctx.translate(hx + hw / 2, hy + 230);
+    ctx.fillStyle = 'rgba(242,183,5,.10)';
+    for (let k = 0; k < 16; k++) { ctx.rotate(Math.PI / 8); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-26, -320); ctx.lineTo(26, -320); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+    if (imgs[0]) ctx.drawImage(imgs[0], hx + (hw - 330) / 2, hy + 62, 330, 330);
+    const fl = formLabel(i0);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#14172b';
+    fitFont(ctx, ITEMS[i0].n, hw - 48, 46, 800, DISP);
+    ctx.fillText(ITEMS[i0].n, hx + hw / 2, hy + hh - (fl ? 62 : 40));
+    if (fl) { ctx.fillStyle = '#6b7190'; fitFont(ctx, fl, hw - 48, 22, 700, BODY); ctx.fillText(fl, hx + hw / 2, hy + hh - 28); }
+    ctx.textAlign = 'left';
+  }
+  ctx.lineWidth = 6; ctx.strokeStyle = '#f2b705'; roundRect(ctx, hx + 3, hy + 3, hw - 6, hh - 6, 33); ctx.stroke();
+  // 「No.1」の札と王冠
+  crown(ctx, hx + 62, hy + 50, 58);
+  roundRect(ctx, hx + 104, hy + 26, 116, 48, 24); ctx.fillStyle = '#f2b705'; ctx.fill();
+  ctx.fillStyle = '#3b2a00'; ctx.font = `800 30px ${DISP}`; ctx.textAlign = 'center';
+  ctx.fillText('No.1', hx + 162, hy + 61); ctx.textAlign = 'left';
+
+  // ロゴ（右上）と見出し（ロゴの左に収まる大きさで）
+  const rx = 476;
+  ctx.font = `800 21px ${DISP}`;
+  const lw = ctx.measureText('推しポケランキング').width, lx = W - 40 - lw - 42;
+  roundRect(ctx, lx - 10, 54, lw + 62, 44, 22); ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.fill();
+  if (ball) ctx.drawImage(ball, lx, 61, 30, 30);
+  ctx.fillStyle = '#14172b'; ctx.fillText('推しポケランキング', lx + 38, 84);
+  let fs = 50;
+  const titleW = f => { ctx.font = `800 ${f}px ${DISP}`; const a = ctx.measureText('私の推しポケ').width; ctx.font = `800 ${f * 1.16}px ${DISP}`; return a + f * .24 + ctx.measureText('TOP9').width; };
+  while (fs > 30 && rx + titleW(fs) > lx - 28) fs -= 2;
+  ctx.save();
+  ctx.shadowColor = 'rgba(40,10,80,.35)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 4;
+  ctx.fillStyle = '#fff'; ctx.font = `800 ${fs}px ${DISP}`;
+  ctx.fillText('私の推しポケ', rx, 96);
+  const tw = ctx.measureText('私の推しポケ').width;
+  const yg = ctx.createLinearGradient(0, 96 - fs, 0, 100);
+  yg.addColorStop(0, '#fff6c2'); yg.addColorStop(1, '#ffc93c');
+  ctx.fillStyle = yg; ctx.font = `800 ${fs * 1.16}px ${DISP}`;
+  ctx.fillText('TOP9', rx + tw + fs * .24, 98);
+  ctx.restore();
+
+  // 2〜9位: 右に4列×2段
+  const gx = rx, gy = 124, gap = 14, cw = (W - 40 - gx - gap * 3) / 4, ch = (H - 40 - gy - gap) / 2;
+  for (let k = 1; k < TOP_N; k++) {
+    const n = k - 1, x = gx + (n % 4) * (cw + gap), y = gy + Math.floor(n / 4) * (ch + gap);
+    drawCard(ctx, x, y, cw, ch, k, list[k], imgs[k], m, .56);
+  }
+  // きらきら
+  for (const [x, y, r, c] of [[452, 40, 22, '#ffe27a'], [430, 586, 16, '#fff'], [1170, 118, 14, '#fff'], [468, 132, 10, '#fff6c2'], [26, 380, 12, '#fff']]) sparkle(ctx, x, y, r, c);
+  return new Promise(res => cv.toBlob(res, 'image/jpeg', .88));
 }
 function downloadBlob(blob, name) {
   const a = document.createElement('a');
