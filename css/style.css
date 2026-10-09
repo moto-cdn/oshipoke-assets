@@ -114,7 +114,7 @@ kbd{font-family:var(--font-body);font-size:11px;border:1px solid var(--line-2);b
 .chip[aria-pressed="true"] small{color:color-mix(in srgb,var(--bg) 70%,transparent)}
 .chip-all{min-width:120px}
 
-.segment{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface-2);border:1.5px solid var(--line);border-radius:14px;padding:4px;gap:4px}
+.segment{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--surface-2);border:1.5px solid var(--line);border-radius:14px;padding:4px;gap:4px}
 .segment button{border:0;background:transparent;border-radius:10px;padding:10px 6px;font-weight:700;font-size:14px;color:var(--ink-2);transition:all .18s}
 .segment button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm);outline:1.5px solid var(--line-2)}
 

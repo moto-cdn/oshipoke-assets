@@ -56,7 +56,7 @@ const store = {
  * ============================================================ */
 function evoOk(it, evo) {
   if (evo === 'final') return !it.x;                 // 進化先がない（進化しないポケモンを含む）
-  if (evo === 'pre') return !!it.x || (!it.p && !it.x); // 進化先がある or 進化しない
+  if (evo === 'pre') return !!it.x || (!it.p && !it.x); // 進化先がある or 進化しない（選択肢からは外した。以前の共有URL・途中経過を表示するために残す）
   return true;
 }
 // タイプは「すべて」か1つだけ（そのタイプを持つポケモン。複合タイプの片方でもよい）
@@ -1027,7 +1027,7 @@ let settings = loadPrefs();
 function loadPrefs() {
   const p = store.get(PREF_KEY);
   if (!p || !Array.isArray(p.gens) || !p.kinds) return structuredClone(DEFAULT_SETTINGS);
-  return { gens: p.gens.filter(g => g >= 1 && g <= 9), evo: ['all', 'final', 'pre'].includes(p.evo) ? p.evo : 'all',
+  return { gens: p.gens.filter(g => g >= 1 && g <= 9), evo: ['all', 'final'].includes(p.evo) ? p.evo : 'all',
     type: Number.isInteger(p.type) && p.type >= 0 && p.type <= 18 ? p.type : 0, kinds: { ...DEFAULT_SETTINGS.kinds, ...p.kinds },
     mode: MODE_KEYS.includes(p.mode) ? p.mode : DEFAULT_SETTINGS.mode };
 }
