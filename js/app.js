@@ -1695,34 +1695,18 @@ function intentURL(m, url) {
   if (url) q.set('url', url);
   return `https://x.com/intent/post?${q}`;
 }
+// Xのポスト画面を開く。画像は添付せず、共有URLのプレビュー（その結果のTOP9のサムネイル）で見せる
 async function post() {
   const m = currentModel;
   track('share', { method: 'post' });
-  // 共有URLの保存は、画像づくりと同時に始める
-  const urlP = canShareURL() ? shareURL(m) : Promise.resolve('');
-  // スマホ: 共有メニューから画像ごとポスト
-  if (matchMedia('(hover: none)').matches && navigator.canShare) {
-    const [blob, url] = await Promise.all([makeImage(m), urlP]);
-    const file = new File([blob], 'oshipoke_top9.png', { type: 'image/png' });
-    if (navigator.canShare({ files: [file] })) {
-      const text = [shareText(m), url, `#${HASHTAG}`].filter(Boolean).join('\n');
-      try { await navigator.share({ files: [file], text }); return; } catch (e) { if (e.name === 'AbortError') return; }
-    }
-    downloadBlob(blob, 'oshipoke_top9.png');
-    openPostDialog(m, true, url);
-    return;
-  }
-  // パソコン: そのままポスト画面を開く（共有リンクのプレビューにTOP9の画像が出るので、画像の添付はいらない）
   // ポップアップとして止められないよう、クリックの直後に空のタブを開いておき、共有URLができたら移動する
   const w = window.open('', '_blank');
-  const url = await urlP;
+  const url = canShareURL() ? await shareURL(m) : '';
   if (w) { w.opener = null; w.location.href = intentURL(m, url); return; }
-  openPostDialog(m, false, url);
+  openPostDialog(m, url);
 }
-// ポスト画面を自動で開けなかったときの案内（スマホで画像を保存したときも）
-function openPostDialog(m, saved, url) {
-  $('#postTitle').textContent = saved ? '画像を保存しました' : 'Xでポストする';
-  $('#postText').textContent = saved ? 'ポスト画面で、保存した画像を添付してください' : '下のボタンから、ポスト画面を開いてください';
+// ポスト画面を自動で開けなかったときの案内
+function openPostDialog(m, url) {
   $('#postOpen').href = intentURL(m, url);
   $('#postDialog').hidden = false;
 }
