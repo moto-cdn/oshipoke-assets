@@ -306,8 +306,9 @@ function top9Tags(ids, top) {
 
 /* ============================================================
  * ソート本体
- *  ・超サクッと/ノーマル: 進化・すがた違いをまとめたグループで「ふるい分け」（好きなだけ複数選択）
- *  ・ノーマル/ガチ: トーナメント木で1匹ずつ選ぶ。
+ *  ・サクッと: 進化・すがた違いをまとめたグループで「ふるい分け」（1画面3つまで）→ 残りが少なければ表彰台、多ければトーナメント木でTOP9まで
+ *  ・ガチ: 1匹ずつ「ふるい分け」（選べる数の上限なし）→ トーナメント木で好きなポケモン全員の順位を決める（見送った子も続けて決められる）
+ *  ・トーナメント木:
  *    木の各ノードは「子の先頭どうしで一番好きなもの」を覚えていて、根の先頭が次の順位になる。
  *    取り出したらその経路だけを選び直すので、2位以降は1順位あたり「木の段数」ほどの回数で決まる。
  * ============================================================ */
@@ -1263,7 +1264,7 @@ function renderResult(m) {
   labelPeers = labelContext([...m.ranked, ...m.ref.map(r => r.i), ...m.rest]);
   $('#resultCond').textContent = condText(m.settings, m.total) + ` ／ ${MODES[m.mode].name}` + (isShared ? '' : `・${fmt(m.choices)}回`);
   $('#resultTitle').innerHTML = isShared ? '推しポケ<em>TOP9</em>はこれ！' : '私の推しポケ<em>TOP9</em>';
-  // 共有ページは TOP9 と「決めてみる！」ボタンだけ
+  // 共有ページでは共有ボタンを出さない。ランキング一覧は、サーバーに保存した共有（?s=）のときだけ出す
   $('#shareActions').hidden = isShared;
   $('#rankingSection').hidden = isShared && !m.detail;
   const top = $('#top9');
@@ -1455,14 +1456,14 @@ function shareURL(m) {
   return p;
 }
 function canShareURL() { return location.protocol === 'http:' || location.protocol === 'https:'; }
-const HASHTAG = '私の推しポケTOP9';
+const HASHTAG = '推しポケランキング';
 // ロゴのボール（img/icon.svg と同じもの。tools/make_icons.py で作る）
 const LOGO_BALL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="4" x2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff4d5e"/><stop offset="1" stop-color="#7b61ff"/></linearGradient></defs><g transform="rotate(-22 16 16)"><circle cx="16" cy="16" r="14.72" fill="#14172b"/><circle cx="16" cy="16" r="12" fill="#fff"/><path d="M4 16a12 12 0 0 1 24 0z" fill="url(#g)"/><path d="M7.79 13.01A8.74 8.74 0 0 1 13.01 7.79" fill="none" stroke="#fff" stroke-opacity=".67" stroke-width="2.45"/><rect x="1.28" y="14.86" width="29.44" height="2.28" fill="#14172b"/><circle cx="16" cy="16" r="6" fill="#14172b"/><circle cx="16" cy="16" r="3.83" fill="#fff"/><circle cx="16" cy="16" r="1.61" fill="#ff4d5e"/></g></svg>');
 function shareText(m) {
   return `私のNo.1推しポケは、${fullName(topList(m)[0])}でした！\nあなたも推しポケTOP9を決めてみる▼`;
 }
 
-/* ---- シェア画像 ---- */
+/* ---- 画像（共有画像 1200x1200 / 共有リンクのサムネイル 1200x630）---- */
 function loadImg(src) {
   return new Promise(res => {
     const im = new Image();
@@ -1482,7 +1483,6 @@ function fitFont(ctx, text, maxW, size, weight, family) {
   do { ctx.font = `${weight} ${s}px ${family}`; if (ctx.measureText(text).width <= maxW) break; s -= 1; } while (s > 12);
   return s;
 }
-/* ---- 画像（共有画像 1200x1200 / 共有リンクのサムネイル 1200x630）---- */
 const DISP = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", sans-serif';
 const BODY = '"Noto Sans JP", "Hiragino Sans", sans-serif';
 // フォントとポケモン画像を読み込んでおく
