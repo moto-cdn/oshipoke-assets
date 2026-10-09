@@ -1411,7 +1411,7 @@ function sharePayload(m) {
     n: m.total, c: m.choices, r: m.ranked.map(id), f: m.ref.slice(0, SHARE_REF_MAX).map(r => [id(r.i), r.w]),
     n1: m.ranked.length ? fullName(m.ranked[0]) : '',   // 共有ページの説明文（No.1の名前）
     // 好みの傾向（特性は番号が変わることがあるので名前で保存）
-    i: ins && { b: ins.byTop ? 1 : 0, n: ins.n, l: ins.list.map(x => [x.t.startsWith('a:') ? `A:${D.abilities[x.t.slice(2)]}` : x.t, x.a, Math.round(x.lift * 10) / 10]) },
+    i: ins && { b: ins.byTop ? 1 : 0, n: ins.n, l: ins.list.map(x => [x.t.startsWith('a:') ? `A:${D.abilities[x.t.slice(2)]}` : x.t, Math.round(x.a * 10) / 10, Math.round(x.lift * 10) / 10]) },
   };
 }
 // 共有されたデータの特徴が、このサイトで表示できるものか
@@ -1621,25 +1621,20 @@ async function post() {
       try { await navigator.share({ files: [file], text }); return; } catch (e) { if (e.name === 'AbortError') return; }
     }
     downloadBlob(blob, 'oshipoke_top9.png');
-    openPostDialog(m, false, url);
+    openPostDialog(m, true, url);
     return;
   }
-  // パソコン: 画像をクリップボードにコピーしてから、ポスト画面で貼り付けてもらう
-  // （クリックの直後にコピーを始める必要があるので、画像の作成を待つ Promise ごと渡す）
-  const blobP = makeImage(m);
-  let copied = false;
-  if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-    try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobP })]); copied = true; } catch {
-      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': await blobP })]); copied = true; } catch { /* コピーできない環境 */ }
-    }
-  }
-  if (!copied) downloadBlob(await blobP, 'oshipoke_top9.png');
-  openPostDialog(m, copied, await urlP);
+  // パソコン: そのままポスト画面を開く（共有リンクのプレビューにTOP9の画像が出るので、画像の添付はいらない）
+  // ポップアップとして止められないよう、クリックの直後に空のタブを開いておき、共有URLができたら移動する
+  const w = window.open('', '_blank');
+  const url = await urlP;
+  if (w) { w.opener = null; w.location.href = intentURL(m, url); return; }
+  openPostDialog(m, false, url);
 }
-function openPostDialog(m, copied, url) {
-  const paste = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl+V';
-  $('#postTitle').textContent = copied ? '画像をコピーしました' : '画像を保存しました';
-  $('#postText').textContent = copied ? `ポスト画面で ${paste} を押すと、画像を貼り付けられます` : 'ポスト画面で、保存した画像を添付してください';
+// ポスト画面を自動で開けなかったときの案内（スマホで画像を保存したときも）
+function openPostDialog(m, saved, url) {
+  $('#postTitle').textContent = saved ? '画像を保存しました' : 'Xでポストする';
+  $('#postText').textContent = saved ? 'ポスト画面で、保存した画像を添付してください' : '下のボタンから、ポスト画面を開いてください';
   $('#postOpen').href = intentURL(m, url);
   $('#postDialog').hidden = false;
 }
