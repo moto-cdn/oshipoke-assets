@@ -176,7 +176,10 @@ function buildTagContext(ids) {
   const ws = ids.map(i => ITEMS[i].w).sort((a, b) => a - b);
   const q = (a, p) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
   const gens = new Set(ids.map(i => ITEMS[i].g));
-  return { multiGen: gens.size > 1, hLo: q(hs, .25), hHi: q(hs, .75), wLo: q(ws, .25), wHi: q(ws, .75), cache: new Map() };
+  // 同じポケモン（全国図鑑No.が同じ）のすがた違いの数。すがた違いを何匹選んでも、好みの傾向では1匹ぶんとして数えるため
+  const forms = new Map();
+  for (const i of ids) forms.set(ITEMS[i].no, (forms.get(ITEMS[i].no) || 0) + 1);
+  return { multiGen: gens.size > 1, hLo: q(hs, .25), hHi: q(hs, .75), wLo: q(ws, .25), wHi: q(ws, .75), cache: new Map(), forms };
 }
 function impression(it) {
   let cute = 0, cool = 0;
@@ -253,13 +256,16 @@ function tagPhrase(tag) {
   return [tag];
 }
 // winners は1匹でも複数でもよい（複数選んだ画面は、選んだ数ぶんまとめて加算）
+// すがた違いは、そのポケモンのすがたの数で割って数える（ピカチュウのすがたを何匹選んでも、合わせて1匹ぶん）。進化形は別のポケモンとして数える
+const formWeight = i => 1 / (tagCtx.forms.get(ITEMS[i].no) || 1);
 function recordTags(group, winners) {
   if (!Array.isArray(winners)) winners = [winners];
   if (!winners.length) return;
-  const T = state.tags;
-  const inv = winners.length / group.length;
-  for (const l of group) for (const t of tagsOf(state.ids[l])) (T[t] ||= [0, 0])[1] += inv;
-  for (const w of winners) for (const t of tagsOf(state.ids[w])) T[t][0] += 1;
+  const T = state.tags, id = l => state.ids[l];
+  const sum = ls => ls.reduce((a, l) => a + formWeight(id(l)), 0);
+  const inv = sum(winners) / sum(group);
+  for (const l of group) for (const t of tagsOf(id(l))) (T[t] ||= [0, 0])[1] += inv * formWeight(id(l));
+  for (const w of winners) for (const t of tagsOf(id(w))) T[t][0] += formWeight(id(w));
 }
 // 特性のような細かい分類は、たまたま偏りやすいので少し控えめに評価する
 const TAG_WEIGHT = { a: .6, c: .85, sh: .85, s: .9 };
@@ -279,13 +285,19 @@ function diversify(list) {
   return list.filter(x => (used[x.cat] = (used[x.cat] || 0) + 1) <= (x.cat === 't' ? 2 : 1));
 }
 // TOP9の共通点: 対象全体での割合から見込まれる数より、TOP9に多く入っている特徴
+// すがた違いの同じポケモンは1匹として数える（どれかのすがたにその特徴があれば「その特徴をもつポケモン」）
+function speciesTags(list) {
+  const sp = new Map();
+  for (const i of list) { const set = sp.get(ITEMS[i].no) || new Set(); for (const t of tagsOf(i)) set.add(t); sp.set(ITEMS[i].no, set); }
+  const count = {};
+  for (const set of sp.values()) for (const t of set) count[t] = (count[t] || 0) + 1;
+  return { n: sp.size, count };
+}
 function top9Tags(ids, top) {
-  const base = {}, hit = {};
-  for (const i of ids) for (const t of tagsOf(i)) base[t] = (base[t] || 0) + 1;
-  for (const i of top) for (const t of tagsOf(i)) hit[t] = (hit[t] || 0) + 1;
+  const { n: baseN, count: base } = speciesTags(ids), { n: topN, count: hit } = speciesTags(top);
   const out = [];
   for (const [t, a] of Object.entries(hit)) {
-    const e = base[t] / ids.length * top.length, cat = t.split(':')[0];
+    const e = base[t] / baseN * topN, cat = t.split(':')[0];
     if (a < 3 || a / e < 1.5) continue;
     out.push({ t, cat, a, e, lift: a / e, score: (a - e) / Math.sqrt(e + 1) * (TAG_WEIGHT[cat] || 1) });
   }
