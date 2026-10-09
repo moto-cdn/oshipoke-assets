@@ -1459,8 +1459,11 @@ function canShareURL() { return location.protocol === 'http:' || location.protoc
 const HASHTAG = '推しポケランキング';
 // ロゴのボール（img/icon.svg と同じもの。tools/make_icons.py で作る）
 const LOGO_BALL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="4" x2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff4d5e"/><stop offset="1" stop-color="#7b61ff"/></linearGradient></defs><g transform="rotate(-22 16 16)"><circle cx="16" cy="16" r="14.72" fill="#14172b"/><circle cx="16" cy="16" r="12" fill="#fff"/><path d="M4 16a12 12 0 0 1 24 0z" fill="url(#g)"/><path d="M7.79 13.01A8.74 8.74 0 0 1 13.01 7.79" fill="none" stroke="#fff" stroke-opacity=".67" stroke-width="2.45"/><rect x="1.28" y="14.86" width="29.44" height="2.28" fill="#14172b"/><circle cx="16" cy="16" r="6" fill="#14172b"/><circle cx="16" cy="16" r="3.83" fill="#fff"/><circle cx="16" cy="16" r="1.61" fill="#ff4d5e"/></g></svg>');
+// ポストの本文: No.1・診断結果（好みの傾向のいちばん上）・誘い文句
 function shareText(m) {
-  return `私のNo.1推しポケは、${fullName(topList(m)[0])}でした！\nあなたも推しポケTOP9を決めてみる▼`;
+  const top = insightsOf(m)?.list?.[0];
+  const result = top ? `診断結果「${tagPhrase(top.t)[0].replace(/<[^>]+>/g, '')}が好き？」` : '';
+  return [`私のNo.1推しポケは、${fullName(topList(m)[0])}でした！`, result, 'あなたも推しポケ診断してみる▼'].filter(Boolean).join('\n');
 }
 
 /* ---- 画像（共有画像 1200x1200 / 共有リンクのサムネイル 1200x630）---- */
