@@ -1463,7 +1463,7 @@ const LOGO_BALL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http:/
 function shareText(m) {
   const top = insightsOf(m)?.list?.[0];
   const result = top ? `診断結果「${tagPhrase(top.t)[0].replace(/<[^>]+>/g, '')}が好き？」` : '';
-  return [`私のNo.1推しポケは、${fullName(topList(m)[0])}でした！`, result, 'あなたも推しポケ診断してみる▼'].filter(Boolean).join('\n');
+  return [`私のNo.1推しポケは、${fullName(topList(m)[0])}でした！`, result, 'あなたも推しポケTOP9診断してみる▼'].filter(Boolean).join('\n');
 }
 
 /* ---- 画像（共有画像 1200x1200 / 共有リンクのサムネイル 1200x630）---- */
